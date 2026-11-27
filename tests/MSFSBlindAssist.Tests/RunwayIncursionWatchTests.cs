@@ -349,6 +349,36 @@ public class RunwayIncursionWatchTests
             new HoldShortCandidate(2, 36.0, OnRoute: false, Approached: false),
         }));
 
+    [Fact]
+    public void A_planned_hold_line_left_behind_is_never_spoken_about()
+        // KIAD 2026-11-26: the route's own start hold, 20 m behind an aircraft taxiing away from it
+        // (RouteStartHoldLineCallTests).
+        => Assert.Null(Pick(new[] { new HoldShortCandidate(7, 20.0, OnRoute: true, Approached: false, LeftBehind: true) }));
+
+    // --- Left behind: past the aircraft's beam. Heading 180 (south).
+
+    [Theory]
+    [InlineData(20.0, 0.0)]      // dead astern
+    [InlineData(20.0, 85.0)]     // just behind the beam, east
+    [InlineData(20.0, 275.0)]    // just behind the beam, west
+    public void A_node_past_the_beam_is_left_behind(double distM, double bearing)
+        => Assert.True(IsLeftBehind(distM, bearing, headingTrueDeg: 180.0));
+
+    [Theory]
+    [InlineData(20.0, 180.0)]    // dead ahead
+    [InlineData(35.0, 270.0)]    // exactly abeam: not yet passed
+    [InlineData(20.0, 95.0)]     // just ahead of the beam
+    [InlineData(0.0, 0.0)]       // on top of it
+    public void A_node_ahead_abeam_or_underneath_is_not_left_behind(double distM, double bearing)
+        => Assert.False(IsLeftBehind(distM, bearing, headingTrueDeg: 180.0));
+
+    [Fact]
+    public void Left_behind_bearings_wrap_around_north()
+    {
+        Assert.True(IsLeftBehind(20.0, bearingToNodeDeg: 178.0, headingTrueDeg: 358.0));
+        Assert.False(IsLeftBehind(20.0, bearingToNodeDeg: 2.0, headingTrueDeg: 358.0));
+    }
+
     // --- Leaving a runway is not approaching one — but only THE runway the hold line guards,
     // and only from the runway side of it. PR #255 review, measured on fs2024 navdata: "on ANY
     // runway's pavement" silenced another runway's hold line ahead at 420 airports (704 pairs,

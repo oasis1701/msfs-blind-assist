@@ -130,6 +130,10 @@ decelerating speed (Normal/End exits 18 kt at the junction, High-speed 35 kt).
 | `UTURN_SPOKEN_ON_RUNWAY` / `UTURN_ON_FLAGGED_TURNBACK_EXIT` | "Make a U-turn" spoken on the runway — on an unlabelled exit (a bug) or one the list labels "(sharp turn back)" (warned) | high |
 | `TOUCHDOWN_NAMES_OTHER_TAXIWAY` | at touchdown the first guidance line names a taxiway that is not the chosen exit ("Taxiway A. Steering guidance active." before "…exit taxiway C9") | high (every landing) |
 | `OFF_ROUTE_WARNING_ON_ROUTE` | "Warning: approaching runway X, off route" with the aircraft ≤ 15 m from its route | high |
+| `HOLD_LINE_CALLED_BEHIND` | "Passing the X hold line." about a line every node of which within 45 m is behind the pilot, or "Crossing X." about one with no runway named X entered in the next 150 m | high for "Passing"; "Crossing" over-reports a route that turns round and crosses through the line, the U-turn taking more than 150 m (KORD 10L P4) |
+| `CROSSING_CALLED_NO_RUNWAY` | "Crossing X." and no runway pavement in the next 200 m of travel | medium: any runway clears it, so a call naming the wrong runway (LTFM "17R at B9B" before 17L) is not caught |
+| `HOLD_LINE_CALL_REPEATED` | the same hold-line call twice within 150 m with no hold stop between | medium: a route through the same line twice by design repeats it (OTHH "P6, P7, P6") |
+| `RUNWAY_CROSSED_UNANNOUNCED` | a runway entered on the way (not the destination) with no "Crossing" naming it from 150 m before the entry to 100 m after | information: hundreds on every build, from routes along a runway with no stop and calls spoken earlier; read the A/B difference |
 | `WRONG_TURN_SILENT` | a deliberate wrong turn reached a runway hold line with no warning | high |
 | `MISSED_TURN_STOPPED_BEHIND_LINE` | `missturn`: stopped for the hold short more than 26 m from its node while more than 10 m farther from the hold's runway than the node is (the harness's own sum against `RunwayIncursionWatch.GuardedRunway`): a stop on the taxiway the pilot never left | high |
 | `MISSED_TURN_STOPPED_AT_LINE` / `_HELD_IN_CIRCLE` / `_REROUTED` / `_NOTHING` | `missturn`: stopped beside the node but as near the runway as it is, or at a hold that guards no runway; stopped inside the 25 m circle; answered by the off-route recalculation ("Route changed", or "Off route." with why the route was kept); neither within 300 m | information |
@@ -532,3 +536,30 @@ The fix is [HLD-25](invariants/hold-abeam.md#hld-25): not taken while more than 
 - A plain distance-from-the-runway test with a wider margin: the VHHH stops (22 m behind) and the nearest missed turn (26 m behind, KORD R) are 4 m apart.
 
 **Open:** at KDEN the clearance made of the shortest route's own taxiway names (SC, L, EA, M, EC, P, ED) is routed 1.9 km along ED past the 17L hold line and never reaches the runway, where the shortest route does in 6.6 km. That is the constrained router, on main as well; the route now at least ends as the end of the route. Not flown: a missed turn above 20 kt, and either database with an OSM snapshot.
+
+## Tenth round — hold-line calls about a line already passed (2026-11-27, 100 busiest fs2024 airports, plain navdata)
+
+KIAD, 2026-11-26: stopped at 01C's hold line on Y5 after landing, the pilot planned the route to the gate and, 20 m down Y5 taxiing away from the runway, heard "Crossing runway 01C at Y5." `--trace KIAD:from:38.9538724,-77.4583657,166:B 71:Y5,Y,B` reproduces it on plain fs2024 navdata (the same 23 segments and start node as the app's log). The fix is [HLD-26](invariants/runway-holds.md#hld-26). Four checks are new this round (`HOLD_LINE_CALLED_BEHIND`, `CROSSING_CALLED_NO_RUNWAY`, `HOLD_LINE_CALL_REPEATED`, `RUNWAY_CROSSED_UNANNOUNCED`, in the table above); the "before" is that harness compiled against main 21a22c81d in a scratch worktree.
+
+**The standing modes** (`all wrongturn departures rwystop missedexit`), 14,765 scenarios, every one matched:
+
+| finding | main | after |
+|---|---|---|
+| `HOLD_LINE_CALLED_BEHIND` | 485 | 56 |
+| `CROSSING_CALLED_NO_RUNWAY` | 289 | 101 |
+| `HOLD_LINE_CALL_REPEATED` | 363 | 219 |
+| `RUNWAY_CROSSED_UNANNOUNCED` | 874 | 872 |
+| `OFF_ROUTE_WARNING_ON_ROUTE` | 50 | 51 |
+| wrong turns warned / silent | 384 / 11 | 384 / 11 |
+
+Landings (`compare.py`): nothing better or worse. By scenario, 429, 188, 145 and 3 gone; appeared, one each, all traced:
+
+- `HOLD_LINE_CALL_REPEATED`, OTHH G2G via P6, P7, P6: the route passes the P6 line twice by design. Main spoke "Passing the P7 hold line." about a line behind the aircraft between the two P6 calls; without it the two read as one call repeated.
+- `RUNWAY_CROSSED_UNANNOUNCED`, KATL 26L via D, C, B, D: the second crossing's hold line was already spoken about on the curve before it ("Crossing runway 08R at D.", 39 m off, before its countdown) and is latched, so "Continue" there brings no call. Main's call at that "Continue" was about another line 24 m behind the aircraft on the loop already flown, "Crossing" only through the not-found default. The pre-countdown call is the one in the KEWR AA report (a hold line spoken about before its own countdown), on main as well.
+- `OFF_ROUTE_WARNING_ON_ROUTE`, PHNL 22L vacated at E: the aircraft starts facing the wrong way 5 m short of runway 04L's hold line, which is not on its route, and rolls at it while turning round: "Warning: approaching runway 04L at E, off route." Main said "Crossing runway 04L at E." there, about a line behind the aircraft, on a route that never crosses 04L.
+
+Built in steps, each flown, each step's new findings traced: behind the nose alone lost the crossing call after "Continue" where the hold capture stops an aircraft beside the node (57 `RUNWAY_CROSSED_UNANNOUNCED`, KFLL 28R at A6); then "Passing" said about a start line behind (UUWW 24 at A5), a set-back line guarding no runway (OEJN H1), a node behind the search window called "Crossing" (KMCO 17R exit H7, four flights) and the nose swinging back past a line already flown (KATL 08R at D). The 56 left are main's as well: 46 "Crossing" calls about a line behind the aircraft whose runway the route still runs onto, reached more than the check's 150 m of travel later, after the U-turn at the route start (KORD 10L P4, at the load) or after a stop at the next line for the same runway (UUWW 01 at M1, 20 m into the turn); and 10 "Passing" calls at the load by an aircraft standing on a line its route's first node snapped past (OEJN 16R A2). One of each traced. Extending the 20 m start ignore to cover those was flown and rejected ([HLD-26]).
+
+**Open:** a hold line spoken about before its own countdown, then latched, gets no call after "Continue" (KATL 08R at D; the KEWR AA report); a far-side line called "Crossing" for the next runway rather than its own (LTFM "Crossing runway 17R at B9B." before 17L, `RouteReachesRunwayAfter` takes any runway); and a route whose first node snaps behind an aircraft standing on a hold line (OEJN 16R A2); a line drawn as two nodes a few metres apart can still be spoken about once per node while its crossing is under way (only the node spoken about is latched). Not flown: fs2020, an OSM snapshot.
+
+**Not yet flown, added after this round:** a passed line the aircraft heads back at off its route is spoken about as before (`IsPassedLineBehind`); "passed on the route" needs more than 25 m of route as well as three segments; both route walks test a segment by `RunwayShape.IsRunOntoBy` (a crossing drawn with no node on the pavement counts) and count a segment that starts within 150 m; the start hold is judged first only on the first segment; `HoldLineCall` reads every sentence of the frame's utterance, so the four checks above may count more on both builds. The tables above predate these; re-fly the standing modes before reading them as this branch's.

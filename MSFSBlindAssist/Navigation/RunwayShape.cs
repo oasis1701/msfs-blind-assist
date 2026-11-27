@@ -318,6 +318,28 @@ public sealed class RunwayShape
     }
 
     /// <summary>
+    /// Whether a straight stretch of route from (<paramref name="fromLat"/>, <paramref name="fromLon"/>) to
+    /// (<paramref name="toLat"/>, <paramref name="toLon"/>) runs onto this runway: its far end or its midpoint
+    /// on the pavement, or the stretch crossing the axis inside the extent. The last is a crossing navdata
+    /// draws as one segment from one side to the other with no node on the pavement, the case
+    /// <c>RunwayRouteClassifier</c>'s crossing-point search exists for. What the incursion guard's route walks
+    /// ask of each segment (<c>TaxiGuidanceManager.RouteReachesRunwayAfter</c>,
+    /// <c>RunwayIncursionWatch.IsGuardedRunwayStillAhead</c>).
+    /// </summary>
+    public bool IsRunOntoBy(double fromLat, double fromLon, double toLat, double toLon)
+    {
+        if (IsDegenerate) return false;
+        if (Contains(toLat, toLon, 0.0)
+            || Contains((fromLat + toLat) / 2.0, (fromLon + toLon) / 2.0, 0.0))
+            return true;
+        var (a1, l1) = Project(fromLat, fromLon);
+        var (a2, l2) = Project(toLat, toLon);
+        if (!(l1 * l2 < 0.0)) return false;
+        double along = a1 + l1 / (l1 - l2) * (a2 - a1);
+        return along >= ExtentMinMeters && along <= ExtentMaxMeters;
+    }
+
+    /// <summary>
     /// Far enough off the pavement for a stop point: the codebase's one definition of "off the
     /// runway" (half-width + <see cref="RolloutExitGate.RunwayClearMarginM"/>).
     ///
