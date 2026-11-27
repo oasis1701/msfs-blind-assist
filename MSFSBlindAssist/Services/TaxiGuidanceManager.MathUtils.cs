@@ -166,6 +166,54 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// The aircraft's offsets from the hold node ending segment <paramref name="holdIndex"/>, for
+    /// <see cref="Navigation.HoldShortAbeam.IsReached"/>: along and across the hold segment's own
+    /// direction, or, when that segment is a sub-metre point with no direction, the nearest
+    /// segment before it that has one (<see cref="Navigation.HoldShortAbeam.AxisLookBackSegments"/>).
+    /// False when none has: the hold is then left to the capture circle round its node.
+    /// </summary>
+    internal static bool TryMeasureHoldAbeam(
+        IReadOnlyList<TaxiRouteSegment> segments, int holdIndex, double lat, double lon,
+        out double alongRemainingM, out double crossM, out double axisBearingDeg)
+    {
+        var holdNode = segments[holdIndex].ToNode;
+        for (int i = holdIndex;
+             i >= 0 && i > holdIndex - Navigation.HoldShortAbeam.AxisLookBackSegments; i--)
+        {
+            var axis = segments[i];
+            if (Navigation.HoldShortAbeam.TryMeasure(
+                    lat, lon,
+                    axis.FromNode.Latitude, axis.FromNode.Longitude,
+                    axis.ToNode.Latitude, axis.ToNode.Longitude,
+                    holdNode.Latitude, holdNode.Longitude,
+                    out alongRemainingM, out crossM, out axisBearingDeg))
+                return true;
+        }
+        alongRemainingM = 0.0;
+        crossM = 0.0;
+        axisBearingDeg = 0.0;
+        return false;
+    }
+
+    /// <summary>
+    /// How much farther from its runway's centreline the aircraft is than the hold node
+    /// (<see cref="Navigation.HoldShortAbeam.MetresBehindLine"/>), or null when the node guards no
+    /// runway the incursion guard knows: a node that is not a hold-short node in the navdata (a
+    /// stop the route placed itself, a named holding point), or one too far from any centreline.
+    /// Read from the guard's per-graph cache, which <see cref="CheckRunwayIncursion"/> builds
+    /// earlier in the same position frame.
+    /// </summary>
+    private double? MetresBehindHoldLine(TaxiNode holdNode, double lat, double lon)
+    {
+        if (!_incursionNodeGeometry.TryGetValue(holdNode.NodeId, out var geometry)
+            || geometry.GuardedRunway is not { } runway)
+            return null;
+        return Navigation.HoldShortAbeam.MetresBehindLine(
+            runway.Project(holdNode.Latitude, holdNode.Longitude).Lateral,
+            runway.Project(lat, lon).Lateral);
+    }
+
+    /// <summary>
     /// Absolute lateral (cross-runway) offset in meters of <paramref name="pointLat/Lon"/>
     /// from the runway centerline. The centerline passes through
     /// <paramref name="refLat/Lon"/> in direction <paramref name="runwayHeadingTrueDeg"/>.
