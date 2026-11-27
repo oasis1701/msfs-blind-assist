@@ -391,9 +391,22 @@ public partial class TaxiGuidanceManager : IDisposable
     // StopGuidance so a stale deferred name from one route can never leak into (and be
     // spoken over) the next.
     private string? _pendingTaxiwayAnnouncement = null;
-    private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
+    private bool _approachAnnounced = false;      // "<destination> ahead." on the final segment; cleared on every segment advance
     private int _curveAnnouncedSign = 0;   // -1 announced left, +1 right, 0 armed
-    private bool _turnImminentAnnounced = false;   // "Turn now" at ~100ft
+    // The junction (route + index of the segment ending at it, RouteAhead.NextJunction) whose "In X,
+    // turn…" advance notice and "… now" were said. Keyed to the junction and NEVER cleared on a segment
+    // advance: the cursor passes several short segments between the notice and the turn. Cleared with
+    // the other callout latches when a route is loaded, recalculated or stopped (ResetJunctionCallouts).
+    private TaxiRoute? _approachJunctionRoute;
+    private int _approachJunctionIndex = -1;
+    private TaxiRoute? _turnImminentJunctionRoute;
+    private int _turnImminentJunctionIndex = -1;
+
+    private void ResetJunctionCallouts()
+    {
+        _approachJunctionRoute = _turnImminentJunctionRoute = null;
+        _approachJunctionIndex = _turnImminentJunctionIndex = -1;
+    }
     // Yaw-episode tracker driving the "Straighten." rollout cue. The original
     // design armed off the route's per-junction TurnAngleDegrees — DEAD ON REAL
     // NAVDATA: a measured KSFO route had 107 junctions and only ONE ≥ 60° (real
@@ -426,6 +439,9 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double APPROACH_ANNOUNCE_MIN_M = 80.0;         // floor: ~260ft at very slow taxi
     private const double APPROACH_ANNOUNCE_MAX_M = 200.0;        // ceiling: ~650ft at 30 kt+
     private const double APPROACH_ANNOUNCE_SEC_LEAD = 10.0;      // desired lead time at current ground speed
+    private const double SHARP_TURN_APPROACH_FACTOR = 1.5;       // a sharp turn's advance notice comes this much earlier
+    private const double TURN_WORD_APPROACH_M = 20.0;            // route taken for its direction into a junction (RouteAhead.HeadingChangeTo)
+    private const double ADVANCE_NOTICE_AHEAD_MIN_KTS = 1.0;     // a junction beyond the current segment is announced only once moving
     private const double TURN_IMMINENT_MIN_M = 20.0;             // floor: ~65ft (slow taxi, stopped)
     private const double TURN_IMMINENT_MAX_M = 75.0;             // ceiling: ~245ft (fast jet taxi)
     private const double TURN_IMMINENT_SEC_LEAD = 4.0;           // desired lead time at current ground speed
@@ -868,6 +884,12 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _holdShortOuterAnnounced = false;
     private bool _holdShortSlowDownAnnounced = false;
     private bool _holdShortStopAnnounced = false;
+    // The stop (its hold node) the three latches above belong to: a different next stop re-arms them.
+    // A stale value can only ever re-arm latches, never hold one, so the sites that reset the latches
+    // need not clear it.
+    private int _holdShortCountdownNodeId = -1;
+    // How far ahead along the route the countdown looks for the next stop: the outer tier's 600 ft cap.
+    private const double HOLD_SHORT_COUNTDOWN_LOOKAHEAD_M = 600.0 / METERS_TO_FEET;
 
     // Parking countdown announcements
     private bool _parkingAnnounce50 = false;
@@ -3733,18 +3755,33 @@ public partial class TaxiGuidanceManager : IDisposable
 
     /// <summary>
     /// Hold-short countdown cadence — critical for runway incursion prevention.
-    /// Announces at 300ft, 150ft, 50ft from hold-short node. Only fires on segments
-    /// ending at a hold-short.
+    /// Announces at 300ft, 150ft, 50ft from hold-short node (speed-scaled, below). Counts
+    /// down to the NEXT STOP, measured along the route through every segment before it
+    /// (<see cref="RouteAhead.NextStop"/>), never on the segment that ends at the hold alone:
+    /// the navdata splits the approach to most holds into pieces shorter than the countdown's
+    /// lead, and the cursor moves on 25 m before a segment's end, so KEWR's 2.1 m hold segment
+    /// on AA began its countdown 87 ft out ("… in 75 feet. Stop.", 2026-11-26).
     /// </summary>
     private void CheckHoldShortCountdown(double distToTargetM, TaxiRouteSegment currentSeg)
     {
-        if (!currentSeg.IsHoldShortPoint)
+        // Nothing within the outer tier's cap: nothing to say yet. The latches stay with the stop
+        // they belong to (_holdShortCountdownNodeId), so a stop that drifts back out of range and in
+        // again is never counted down twice.
+        if (_route == null
+            || RouteAhead.NextStop(_route.Segments, _currentSegmentIndex, distToTargetM, HOLD_SHORT_COUNTDOWN_LOOKAHEAD_M)
+               is not { } nextStop)
+            return;
+        var stopSeg = _route.Segments[nextStop.Index];
+
+        // One countdown per stop: a new stop starts with fresh latches. (They used to be reset on
+        // every frame off a hold segment, which the along-route count would now do mid-countdown.)
+        int stopNodeId = stopSeg.ToNode?.NodeId ?? -1;
+        if (stopNodeId != _holdShortCountdownNodeId)
         {
-            // Reset flags when not on a hold-short-ending segment
+            _holdShortCountdownNodeId = stopNodeId;
             _holdShortOuterAnnounced = false;
             _holdShortSlowDownAnnounced = false;
             _holdShortStopAnnounced = false;
-            return;
         }
 
         // All three callouts already fired — nothing left to compute. (Without this
@@ -3753,13 +3790,13 @@ public partial class TaxiGuidanceManager : IDisposable
         if (_holdShortOuterAnnounced && _holdShortSlowDownAnnounced && _holdShortStopAnnounced)
             return;
 
-        double distFeet = distToTargetM * METERS_TO_FEET;
-        string what = !string.IsNullOrEmpty(currentSeg.HoldShortRunway)
-            ? currentSeg.HoldShortRunway
+        double distFeet = nextStop.AlongMetres * METERS_TO_FEET;
+        string what = !string.IsNullOrEmpty(stopSeg.HoldShortRunway)
+            ? stopSeg.HoldShortRunway
             : "hold short";
         // The end of a route that stops far aside of its runway is not that runway's hold
         // (_routeEndsFarFromRunway): count down to the end of the route, in the same three steps.
-        string lead = _routeEndsFarFromRunway && _route != null && _currentSegmentIndex == _route.Segments.Count - 1
+        string lead = _routeEndsFarFromRunway && nextStop.Index == _route.Segments.Count - 1
             ? "End of route"
             : $"Hold short {what}";
 
@@ -3841,19 +3878,14 @@ public partial class TaxiGuidanceManager : IDisposable
             _lastGroundSpeedKts * 0.5144 * TURN_SPEED_WARN_SEC_LEAD,
             TURN_SPEED_WARN_MIN_M, TURN_SPEED_WARN_MAX_M);
 
-        bool normalTurnComing = false;
-        bool sharpTurnComing = false;
-        int nextIdx = _currentSegmentIndex + 1;
-        if (nextIdx < _route.Segments.Count)
-        {
-            var next = _route.Segments[nextIdx];
-            if (next.TurnDirection != "straight" && distToTargetM < turnWarnDist)
-            {
-                double ang = Math.Abs(next.TurnAngleDegrees);
-                if (ang >= SHARP_TURN_ANGLE_DEG) sharpTurnComing = true;
-                else normalTurnComing = true;
-            }
-        }
+        // Any turn within the lookahead ALONG THE ROUTE, not only at the end of the current segment:
+        // after a run of 4 to 9 m segments the cursor reached the segment before KEWR's F3 junction
+        // 105 ft out at 18.3 kt, 3 s before a 92 degree turn ("Sharp right now, taxiway F3. Slow for
+        // sharp turn.", 2026-11-26), where the 6 s lookahead wanted it 56 m out.
+        var turnsAhead = RouteAhead.TurnsWithin(
+            _route.Segments, _currentSegmentIndex, distToTargetM, turnWarnDist, SHARP_TURN_ANGLE_DEG);
+        bool sharpTurnComing = turnsAhead.Sharp;
+        bool normalTurnComing = turnsAhead.Turn && !turnsAhead.Sharp;
 
         if (sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_SHARP_TURN_KTS)
         {
@@ -3902,6 +3934,21 @@ public partial class TaxiGuidanceManager : IDisposable
             _route.Segments[_currentSegmentIndex].IsHoldShortPoint)
         {
             scheduledHsNodeId = _route.Segments[_currentSegmentIndex].ToNode.NodeId;
+        }
+        // The route's next stop when it ends a LATER segment: the countdown owns it too (it counts down
+        // along the route, RouteAhead.NextStop), so the guard never says "Crossing …" or "Passing the …
+        // hold line." about it. A 2.1 m hold segment put KEWR's 04L hold on AA inside the 40 m radius while
+        // the cursor was still two segments back, and the pilot heard "Passing the runway 04L at AA hold
+        // line." two seconds before the "Stop." for that very line (2026-11-26). It stays a candidate and,
+        // picked, is latched and opens the cooldown exactly as the spoken line did, only in silence: the
+        // guard's choices are main's, and only the sentence goes (VirtualPilot: skipping the node outright
+        // freed false off-route warnings for a neighbouring line of the same runway in the countdown's
+        // last seconds, KSLC 16L at G beside H: 67 → 98 flights; RTE-41).
+        int laterStopHsNodeId = -1;
+        if (scheduledHsNodeId < 0 && _route != null
+            && RouteAhead.NextStop(_route.Segments, _currentSegmentIndex, 0.0, double.PositiveInfinity) is { } laterStop)
+        {
+            laterStopHsNodeId = _route.Segments[laterStop.Index].ToNode?.NodeId ?? -1;
         }
         // The cooldown is a pure TIME check. It used to also require _lastIncursionWarnedNodeId
         // != -1, which meant any path that re-armed the node id disarmed the cooldown with it —
@@ -4039,7 +4086,11 @@ public partial class TaxiGuidanceManager : IDisposable
         var pickNode = _graph.Nodes[pick.Value.NodeId];
         if (pick.Value.OnRoute && inIncursionCooldown)
             return;
-        if (pick.Value.OnRoute)
+        if (pick.Value.OnRoute && pick.Value.NodeId == laterStopHsNodeId)
+        {
+            // The route's next stop, counted down already: nothing said, latched below as before.
+        }
+        else if (pick.Value.OnRoute)
         {
             // Planned crossing — informational, not a warning. Silent for the landed runway's own
             // hold line while vacating it; "Passing … hold line" for a line the route passes
@@ -4497,7 +4548,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // Also reset the hold-short countdown latches — the next leg may have its
         // own hold-short and needs fresh 300/150/50ft callouts.
         _approachAnnounced = false;
-        _turnImminentAnnounced = false;
+        ResetJunctionCallouts();
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
         _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
@@ -4822,7 +4873,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // but StopGuidance can be called independently (hotkey, takeoff-assist takeover).
         _approachAnnounced = false;
         _curveAnnouncedSign = 0;
-        _turnImminentAnnounced = false;
+        ResetJunctionCallouts();
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
         _lastAnnouncedTaxiway = "";
