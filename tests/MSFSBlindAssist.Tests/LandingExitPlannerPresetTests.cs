@@ -80,6 +80,35 @@ public class LandingExitPlannerPresetTests
         Assert.Contains("12L", s.Notice);   // what is actually showing instead
     }
 
+    // Quoted word for word in guide/approach-and-landing.md (Shift+D step 3 and Shift+X step 3),
+    // and shared by both windows, so it must not mention planning an exit.
+    [Fact]
+    public void The_missing_runway_notice_reads_exactly_as_the_guide_quotes_it()
+        => Assert.Equal(
+            "Runway 27R is not in this airport's runway list. Showing runway 09L instead — check the runway before you continue.",
+            LandingExitPlannerPreset.SelectRunway(new[] { "09L", "27L" }, "27R").Notice);
+
+    // ---------------------------------------------------------------------------------
+    // Select Destination Runway's airport (PR #318): the planner's preset, plus a flight
+    // plan's arrival airport when the plan names no runway — never a different airport.
+    // ---------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_destination_window_uses_the_planners_airport_when_it_has_one()
+        => Assert.Equal("KEWR", LandingExitPlannerPreset.DestinationWindowIcao(
+            new LandingExitPlannerPresetResult("KEWR", "22L"), "KBOS"));
+
+    [Fact]
+    public void The_destination_window_falls_back_to_a_plan_airport_with_no_runway()
+        => Assert.Equal("EGLL", LandingExitPlannerPreset.DestinationWindowIcao(Nothing, " egll "));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void The_destination_window_opens_empty_when_nothing_is_known(string? planIcao)
+        => Assert.Null(LandingExitPlannerPreset.DestinationWindowIcao(Nothing, planIcao));
+
     [Fact]
     public void An_airport_with_no_runways_loaded_selects_nothing()
     {

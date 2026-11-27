@@ -38,6 +38,17 @@ public static class LandingExitPlannerPreset
     }
 
     /// <summary>
+    /// The airport Select Destination Runway opens with: the preset's, else a flight plan's
+    /// arrival airport even when the plan names no runway. The planner opens empty then (its
+    /// runway would quietly default to the first one, issue #234); the destination window only
+    /// needs the airport, and its list starts on the first runway whenever no runway is known.
+    /// Never a different airport from the planner's, only one where the planner has none.
+    /// </summary>
+    public static string? DestinationWindowIcao(LandingExitPlannerPresetResult preset, string? flightPlanArrivalIcao)
+        => preset.Icao
+           ?? (string.IsNullOrWhiteSpace(flightPlanArrivalIcao) ? null : flightPlanArrivalIcao.Trim().ToUpperInvariant());
+
+    /// <summary>
     /// The runway row a load selects, and whether the pilot needs telling about it.
     ///
     /// <para>Pre-filling the runway exists BECAUSE issue #234 began with the box quietly defaulting
@@ -61,8 +72,10 @@ public static class LandingExitPlannerPreset
                 return new PresetRunwaySelection(i, true, null);
 
         return new PresetRunwaySelection(0, false,
+            // Worded for both windows that share this selector (the Landing Exit Planner and
+            // Select Destination Runway), so no "plan an exit" here.
             $"Runway {presetRunwayId.Trim()} is not in this airport's runway list. " +
-            $"Showing runway {runwayIds[0]} instead — check the runway before you plan an exit.");
+            $"Showing runway {runwayIds[0]} instead — check the runway before you continue.");
     }
 
     /// <summary>True when two runway designators name the same runway end after
