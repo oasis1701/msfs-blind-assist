@@ -277,6 +277,18 @@ public partial class TaxiGuidanceManager : IDisposable
     // the Repeat-last buffer (_rerouteOfferText is the sentence spoken, _instructionBeforeRerouteOffer
     // what the buffer held before it).
     private bool _confirmReroutes;
+
+    /// <summary>
+    /// The settings a position frame reads, in place of <c>SettingsManager.Current</c>. For the
+    /// VirtualPilot harness only: left null (the app), every frame reads the live settings, which
+    /// in a harness process is the settings.json of whoever runs it. A run then depended on what
+    /// its developer flies with: with "ask before switching" saved as on, every route change of a
+    /// simulated flight became an offer the simulated pilot never takes (2026-11-27: 3 of 56
+    /// wrong-turn outcomes on the 40 busiest airports differed from the same code with it off),
+    /// and a saved hard pan or inverted tone changed what the simulated pilot steers by.
+    /// </summary>
+    internal static UserSettings? FrameSettingsForHarness;
+
     private bool _rerouteOffered;
     private string? _rerouteOfferText;
     private string _instructionBeforeRerouteOffer = "";
@@ -2555,7 +2567,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // taken just before the reset would use the pre-reset object — equal or
         // better than the old behavior, which could tear mid-frame between the two
         // reads if a save landed between them.
-        var settings = SettingsManager.Current;
+        var settings = FrameSettingsForHarness ?? SettingsManager.Current;
 
         // Refresh tone-direction settings once per frame, before any branch
         // (taxiing, lining-up, or runway-aligned hold) that can drive the

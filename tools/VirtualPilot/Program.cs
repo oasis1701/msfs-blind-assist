@@ -77,6 +77,9 @@ StreamWriter? resultsWriter = null;
 var counts = new SortedDictionary<string, int>();
 int landings = 0, taxis = 0;
 var settings = new UserSettings { TaxiGuidanceToneVolume = 0.0, TaxiGuidanceHardPanTone = false };
+// Every position frame reads its settings from here, never from the settings.json of whoever
+// runs the harness (TaxiGuidanceManager.FrameSettingsForHarness says what that cost).
+TaxiGuidanceManager.FrameSettingsForHarness = settings;
 var started = DateTime.Now;
 string? depTraceFilter = null;
 
