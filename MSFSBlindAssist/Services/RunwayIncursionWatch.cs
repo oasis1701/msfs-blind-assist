@@ -324,26 +324,23 @@ public static class RunwayIncursionWatch
     /// <summary>
     /// How far along the route past the end of the segment being flown <see cref="IsGuardedRunwayStillAhead"/>
     /// looks for the runway: the 150 m a planned hold line may stand before its runway and still be called a
-    /// crossing (<c>TaxiGuidanceManager.RouteReachesRunwayAfter</c>).
+    /// crossing (<c>TaxiGuidanceManager.RouteReachesRunwayAfter</c>). A segment counts when it STARTS within it,
+    /// as in that walk.
     /// </summary>
     public const double GuardedRunwayAheadMetres = 150.0;
 
     /// <summary>
-    /// Whether the crossing a planned hold line guards is still to come: the aircraft is on
-    /// <paramref name="guardedRunway"/>'s pavement now, or the route from the segment being flown runs onto
-    /// it within <see cref="GuardedRunwayAheadMetres"/> (a segment's end or midpoint on the pavement). A line
-    /// that guards no runway is judged against <paramref name="everyRunway"/>, as its wording is: OEJN's H1
-    /// line stands 155 m off 34C's centreline, beyond <c>TaxiGraph.HOLDSHORT_RUNWAY_MATCH_M</c>, and a route
-    /// that started held at it and crossed 34C lost its "Crossing" with none. False with neither.
-    ///
-    /// <para>What keeps a line behind the aircraft (<see cref="IsLeftBehind"/>) in the planned-crossing half of
-    /// the guard. Behind the nose alone silenced real crossings, measured with VirtualPilot (fs2024): the hold
-    /// capture stops an aircraft that comes at the line wide BESIDE its node, level with it or just past it
-    /// (<c>HoldShortAbeam</c>), and "Continue" there was followed by "Crossing runway 28R at A6." with 28R
-    /// 40 m ahead (KFLL); a route that starts held at a line crosses its runway with the line behind
-    /// it. Another runway ahead is not this line's crossing: past the far-side line of 17R at LTFM B9B
-    /// the route runs on to 17L, which has its own line.</para>
+    /// Whether a planned line the route has left behind (<paramref name="passedOnRoute"/>,
+    /// <c>TaxiGuidanceManager.IsPassedOnRoute</c>) still counts as behind: not while the aircraft is heading
+    /// back at it off its route (<paramref name="approachedOffTheRoute"/>: an approach test says it is ahead and
+    /// the aircraft is not tracking the route). A pilot who turns round toward a runway through a line passed
+    /// earlier, with the route kept (a recalculation that failed, or an Arrived route), hears about the line
+    /// as before; one swinging round on the route past a line on a loop already flown does not (KATL 08R at
+    /// D, while tracking).
     /// </summary>
+    public static bool IsPassedLineBehind(bool passedOnRoute, bool approachedOffTheRoute)
+        => passedOnRoute && !approachedOffTheRoute;
+
     /// <summary>
     /// Whether a hold line on the route is done with, so the guard never speaks about it
     /// (<see cref="HoldShortCandidate.LeftBehind"/>): it is <paramref name="behind"/> the aircraft
@@ -359,6 +356,23 @@ public static class RunwayIncursionWatch
     public static bool IsPlannedLineLeftBehind(bool behind, bool calledACrossing, bool guardedRunwayStillAhead)
         => behind && !(calledACrossing && guardedRunwayStillAhead);
 
+    /// <summary>
+    /// Whether the crossing a planned hold line guards is still to come: the aircraft is on
+    /// <paramref name="guardedRunway"/>'s pavement now, or the route from the segment being flown runs onto
+    /// it, a segment starting within <see cref="GuardedRunwayAheadMetres"/> past that segment's end
+    /// (<see cref="RunwayShape.IsRunOntoBy"/>: its end or midpoint on the pavement, or it crosses the axis). A
+    /// line that guards no runway is judged against <paramref name="everyRunway"/>, as its wording is: OEJN's
+    /// H1 line stands 155 m off 34C's centreline, beyond <c>TaxiGraph.HOLDSHORT_RUNWAY_MATCH_M</c>, and a route
+    /// that started held at it and crossed 34C lost its "Crossing" with none. False with neither.
+    ///
+    /// <para>What keeps a line behind the aircraft (<see cref="IsLeftBehind"/>) in the planned-crossing half of
+    /// the guard. Behind the nose alone silenced real crossings, measured with VirtualPilot (fs2024): the hold
+    /// capture stops an aircraft that comes at the line wide BESIDE its node, level with it or just past it
+    /// (<c>HoldShortAbeam</c>), and "Continue" there was followed by "Crossing runway 28R at A6." with 28R
+    /// 40 m ahead (KFLL); a route that starts held at a line crosses its runway with the line behind
+    /// it. Another runway ahead is not this line's crossing: past the far-side line of 17R at LTFM B9B
+    /// the route runs on to 17L, which has its own line.</para>
+    /// </summary>
     public static bool IsGuardedRunwayStillAhead(
         double aircraftLat, double aircraftLon, RunwayShape? guardedRunway,
         IReadOnlyList<TaxiRouteSegment> segments, int currentSegmentIndex,
@@ -372,22 +386,22 @@ public static class RunwayIncursionWatch
                 if (everyRunway[i].Contains(lat, lon, 0.0)) return true;
             return false;
         }
+        bool RunsOntoIt(TaxiNode from, TaxiNode to)
+        {
+            if (guardedRunway != null)
+                return guardedRunway.IsRunOntoBy(from.Latitude, from.Longitude, to.Latitude, to.Longitude);
+            for (int i = 0; i < everyRunway!.Count; i++)
+                if (everyRunway[i].IsRunOntoBy(from.Latitude, from.Longitude, to.Latitude, to.Longitude)) return true;
+            return false;
+        }
         if (OnIt(aircraftLat, aircraftLon)) return true;
         int start = Math.Max(0, currentSegmentIndex);
         double run = 0;
-        for (int j = start; j < segments.Count; j++)
+        for (int j = start; j < segments.Count && run <= GuardedRunwayAheadMetres; j++)
         {
             var seg = segments[j];
-            if (j > start)
-            {
-                run += seg.DistanceMeters;
-                if (run > GuardedRunwayAheadMetres) break;
-            }
-            if (seg.ToNode is not { } to) continue;
-            if (OnIt(to.Latitude, to.Longitude)) return true;
-            if (seg.FromNode is { } from && OnIt(
-                    (from.Latitude + to.Latitude) / 2.0, (from.Longitude + to.Longitude) / 2.0))
-                return true;
+            if (seg.ToNode is { } to && RunsOntoIt(seg.FromNode ?? to, to)) return true;
+            if (j > start) run += seg.DistanceMeters;
         }
         return false;
     }

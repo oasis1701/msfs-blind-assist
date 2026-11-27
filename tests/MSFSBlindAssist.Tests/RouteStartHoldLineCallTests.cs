@@ -259,6 +259,68 @@ public class RouteStartHoldLineCallTests
         Assert.False(TaxiGuidanceManager.RouteReachesRunwayAfter(lineBeforeTheWindow, 5, HoldId, Runways));
     }
 
+    [Fact]
+    public void A_route_that_loops_back_through_its_start_hold_onto_the_runway_crosses_there()
+    {
+        // A U-turn at the route start (the KORD 10L P4 shape): 108 m down Y5, back to the start hold, then onto
+        // 01C. Flying the way back, the pass ahead is the one judged, not the start 216 m of loop earlier.
+        var route = Route(Hold, Node(1464, 38.952988, -77.457718), Hold,
+            Node(2001, 38.954441, -77.458855), Node(2002, 38.954731, -77.459061),
+            Node(2003, 38.954792, -77.459099), Node(2004, 38.955200, -77.459320));
+        Assert.True(TaxiGuidanceManager.RouteReachesRunwayAfter(route, 1, HoldId, Runways));
+        // On the first segment the start occurrence is still the one ahead: judged from there, 01C is beyond 150 m.
+        Assert.False(TaxiGuidanceManager.RouteReachesRunwayAfter(route, 0, HoldId, Runways));
+    }
+
+    // --- A crossing drawn with no node on the runway: one segment from one side to the other (the case
+    // RunwayRouteClassifier's crossing-point search exists for). H is 104 m east of 01C's centreline, the far
+    // node 30 m west of it, so neither end nor the midpoint (37 m east) is on the 50 m wide pavement.
+
+    private static readonly TaxiNode AcrossTheRunway = Node(3001, 38.953819, -77.459918);
+
+    private static List<TaxiRouteSegment> NodelessCrossing() => Route(
+        Node(1465, 38.953304, -77.457970), Hold, AcrossTheRunway, Node(3002, 38.953819, -77.460600));
+
+    [Fact]
+    public void A_crossing_with_no_node_on_the_runway_is_called_a_crossing()
+        => Assert.True(TaxiGuidanceManager.RouteReachesRunwayAfter(NodelessCrossing(), 0, HoldId, Runways));
+
+    [Fact]
+    public void Beside_the_line_of_a_crossing_with_no_node_on_the_runway_its_runway_is_still_ahead()
+        // Stopped beside the hold node by the hold capture, "Continue" moves the cursor onto the crossing segment.
+        => Assert.True(IsGuardedRunwayStillAhead(38.953864, -77.458366, RunwayShape.For(Rwy01C), NodelessCrossing(), currentSegmentIndex: 1));
+
+    [Fact]
+    public void A_long_segment_onto_the_runway_that_starts_within_150_m_counts()
+    {
+        // The still-ahead walk counts a segment that STARTS within 150 m past the segment being flown, as
+        // RouteReachesRunwayAfter does: here the line is 220 m east of 01C, the segment being flown ends 40 m
+        // on, and the next one runs 180 m to the centreline.
+        var route = Route(Node(4000, 38.953819, -77.457030, TaxiNodeType.HoldShort, "runway 01C at Y5"),
+            Node(4001, 38.953819, -77.457492), Node(4002, 38.953819, -77.459571));
+        Assert.True(IsGuardedRunwayStillAhead(38.953869, -77.457030, RunwayShape.For(Rwy01C), route, currentSegmentIndex: 0));
+    }
+
+    [Fact]
+    public void A_line_still_ahead_past_a_run_of_micro_bends_is_not_passed()
+    {
+        // Navdata draws a fillet as micro-bends a few metres apart, and the 25 m capture runs the cursor ahead of
+        // the aircraft through them: four segments past the line can be 13 m of route, the line still ahead.
+        var route = Route(Node(1465, 38.953304, -77.457970), Hold,
+            Node(5001, 38.953849, -77.458366), Node(5002, 38.953879, -77.458366), Node(5003, 38.953909, -77.458366),
+            Node(5004, 38.953939, -77.458366), Node(5005, 38.954300, -77.458366), Node(5006, 38.954700, -77.458366));
+        Assert.False(TaxiGuidanceManager.IsPassedOnRoute(route, 5, HoldId));   // four bends, 13 m: within the capture's reach
+        Assert.True(TaxiGuidanceManager.IsPassedOnRoute(route, 6, HoldId));    // and 40 m more: passed
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]   // not passed on the route
+    [InlineData(true, false, true)]     // KATL 08R at D: swinging round on the route past a line on the loop already flown
+    [InlineData(true, true, false)]     // turned round toward a passed line, off the route: spoken about as before
+    public void A_passed_line_is_behind_unless_the_aircraft_heads_back_at_it_off_the_route(
+        bool passedOnRoute, bool approachedOffTheRoute, bool behind)
+        => Assert.Equal(behind, IsPassedLineBehind(passedOnRoute, approachedOffTheRoute));
+
     // --- 3. A hold line passed on the way and then left behind: no repeat.
 
     [Fact]

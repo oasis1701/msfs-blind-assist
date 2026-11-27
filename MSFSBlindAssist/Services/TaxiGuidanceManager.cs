@@ -3884,7 +3884,8 @@ public partial class TaxiGuidanceManager : IDisposable
     ///      hold line while vacating it (IsVacatingLandedRunwayHold: LROP 08R D). Nothing either
     ///      for a line the guard is done with (RunwayIncursionWatch.IsPlannedLineLeftBehind):
     ///      behind the aircraft, one it has passed or the route's own start hold it is taxiing
-    ///      away from (KIAD 01C at Y5), unless the crossing it guards is still under way.
+    ///      away from (KIAD 01C at Y5), unless the crossing it guards is still under way. A line passed
+    ///      on the route that the aircraft heads back at, off the route, is spoken about as before.
     ///   2. Aircraft is approaching a hold-short node OFF the planned route
     ///      → "Warning: approaching runway X, off route" (red flag — wrong turn)
     /// The scheduled-hold-short (user-checked) case is silent here because
@@ -4012,7 +4013,10 @@ public partial class TaxiGuidanceManager : IDisposable
             bool onRoute = onRouteHsNodes.Contains(node.NodeId);
             bool approached = false;
             _incursionNodeGeometry.TryGetValue(node.NodeId, out var geometry);
-            if (!onRoute && !RunwayIncursionWatch.IsLeavingThroughHoldLine(
+            // A planned line the route has left well behind gets the approach tests too, so a pilot heading
+            // back at it off the route still hears about it (RunwayIncursionWatch.IsPassedLineBehind, below).
+            bool passedOnRoute = onRoute && IsPassedOnRoute(_route!.Segments, _currentSegmentIndex, node.NodeId);
+            if ((!onRoute || passedOnRoute) && !RunwayIncursionWatch.IsLeavingThroughHoldLine(
                     lat, lon, node.Latitude, node.Longitude, geometry?.GuardedRunway))
             {
                 double bearingToNode = NavigationCalculator.CalculateBearing(
@@ -4033,7 +4037,7 @@ public partial class TaxiGuidanceManager : IDisposable
                         lat, lon, headingTrue, _lastGroundSpeedKts * StartWarningChatterGate.MetersPerSecondPerKnot, _yawRateDegSec,
                         node.Latitude, node.Longitude, pathsIntoNode);
                 }
-                if (!approached && _incursionWithheldLoggedNodes.Add(node.NodeId))
+                if (!approached && !onRoute && _incursionWithheldLoggedNodes.Add(node.NodeId))
                     _guidanceLog.Info(
                         $"Incursion warning withheld: {name} {d:F0} m away, bearing {bearingToNode:F0} vs heading {headingTrue:F0} — not ahead.");
             }
@@ -4041,19 +4045,28 @@ public partial class TaxiGuidanceManager : IDisposable
             // has passed (and may come up again once the cooldown ends, unlatched), or the route's own start
             // hold it is taxiing away from, which the 20 m ignore above lets back in (KIAD 01C at Y5). Behind is
             // the nose's view, or the route's when the nose swings back past a line already flown (KATL 08R at
-            // D). A line the hold capture stopped the aircraft beside, its runway just ahead, is still a
-            // crossing (KFLL 28R at A6). RunwayIncursionWatch.IsPlannedLineLeftBehind; the two route walks run
-            // only for a line behind.
-            bool leftBehind = onRoute
+            // D), never while the aircraft heads back at it off the route. A line the hold capture stopped the
+            // aircraft beside, its runway just ahead, is still a crossing (KFLL 28R at A6).
+            // RunwayIncursionWatch.IsPlannedLineLeftBehind. IsPassedOnRoute walks the route for every planned
+            // line in range; the crossing walk runs only for a line behind, the runway walk only when the
+            // route calls that line a crossing.
+            bool leftBehind = false;
+            if (onRoute
                 && (RunwayIncursionWatch.IsLeftBehind(
                         d, NavigationCalculator.CalculateBearing(lat, lon, node.Latitude, node.Longitude), headingTrue)
-                    || IsPassedOnRoute(_route!.Segments, _currentSegmentIndex, node.NodeId))
-                && RunwayIncursionWatch.IsPlannedLineLeftBehind(
+                    || RunwayIncursionWatch.IsPassedLineBehind(
+                        passedOnRoute, approachedOffTheRoute: approached && !IsTrackingRoute(lat, lon))))
+            {
+                bool calledACrossing = RouteReachesRunwayAfter(node.NodeId);
+                leftBehind = RunwayIncursionWatch.IsPlannedLineLeftBehind(
                     behind: true,
-                    calledACrossing: RouteReachesRunwayAfter(node.NodeId),
-                    guardedRunwayStillAhead: RunwayIncursionWatch.IsGuardedRunwayStillAhead(
+                    calledACrossing,
+                    guardedRunwayStillAhead: calledACrossing && RunwayIncursionWatch.IsGuardedRunwayStillAhead(
                         lat, lon, geometry?.GuardedRunway, _route!.Segments, _currentSegmentIndex, _incursionRunwayShapes));
-            _incursionCandidates.Add(new RunwayIncursionWatch.HoldShortCandidate(node.NodeId, d, onRoute, approached, name, leftBehind));
+            }
+            // An on-route line is spoken about only as a planned one (Pick), so it never carries Approached.
+            _incursionCandidates.Add(new RunwayIncursionWatch.HoldShortCandidate(
+                node.NodeId, d, onRoute, approached && !onRoute, name, leftBehind));
         }
         var pick = RunwayIncursionWatch.Pick(_incursionCandidates);
         if (pick == null || pick.Value.NodeId == _lastIncursionWarnedNodeId)
@@ -4162,8 +4175,11 @@ public partial class TaxiGuidanceManager : IDisposable
     /// it, and is judged by the route from its first segment. It used to read as "not found", so a
     /// route that began at a runway's hold line and ran away from the runway was called a crossing
     /// (KIAD 01C at Y5, 2026-11-26), and so was a line the cursor was already past (KMCO 17R exit H7,
-    /// VirtualPilot: out through one hold node, back through another). Pure —
-    /// <c>RouteStartHoldLineCallTests</c>.
+    /// VirtualPilot: out through one hold node, back through another). The start occurrence is taken
+    /// first only while the first segment is flown: on a route that loops back through its start hold
+    /// onto the runway (a U-turn at the route start), the pass ahead is the one judged. A segment
+    /// reaches a runway when <see cref="RunwayShape.IsRunOntoBy"/> says so, a crossing drawn with no
+    /// node on the pavement included. Pure — <c>RouteStartHoldLineCallTests</c>.
     /// </summary>
     internal static bool RouteReachesRunwayAfter(
         IReadOnlyList<TaxiRouteSegment> segments, int currentSegmentIndex, int holdNodeId,
@@ -4172,20 +4188,27 @@ public partial class TaxiGuidanceManager : IDisposable
         const int NotOnRoute = int.MinValue, StartNode = -1;
         int searchFrom = Math.Min(segments.Count, Math.Max(0, currentSegmentIndex - ON_ROUTE_TRACKING_SEGMENTS_BACK));
         bool startsAtIt = segments.Count > 0 && segments[0].FromNode?.NodeId == holdNodeId;
-        int k = searchFrom == 0 && startsAtIt ? StartNode : NotOnRoute;
+        int k = currentSegmentIndex <= 0 && startsAtIt ? StartNode : NotOnRoute;
         for (int i = searchFrom; k == NotOnRoute && i < segments.Count; i++)
             if (segments[i].ToNode?.NodeId == holdNodeId) k = i;
         for (int i = searchFrom - 1; k == NotOnRoute && i >= 0; i--)
             if (segments[i].ToNode?.NodeId == holdNodeId) k = i;
         if (k == NotOnRoute && startsAtIt) k = StartNode;
         if (k == NotOnRoute) return true;
+        if (runways == null) return false;
         double run = 0;
         for (int j = k + 1; j < segments.Count && run <= HOLD_LINE_RUNWAY_AHEAD_M; j++)
         {
-            var n = segments[j].ToNode;
-            if (n != null && RouteRunwayCrossings.RunwayUnder(runways, n.Latitude, n.Longitude) != null)
-                return true;
-            run += segments[j].DistanceMeters;
+            var seg = segments[j];
+            if (seg.ToNode is { } n)
+            {
+                var from = seg.FromNode ?? n;
+                for (int r = 0; r < runways.Count; r++)
+                    if (runways[r] != null
+                        && RunwayShape.For(runways[r]).IsRunOntoBy(from.Latitude, from.Longitude, n.Latitude, n.Longitude))
+                        return true;
+            }
+            run += seg.DistanceMeters;
         }
         return false;
     }
@@ -4197,15 +4220,23 @@ public partial class TaxiGuidanceManager : IDisposable
     /// looks in first, <see cref="ON_ROUTE_TRACKING_SEGMENTS_BACK"/> segments behind the one being flown.
     /// The incursion guard counts such a line as behind the aircraft even when the nose swings back
     /// past it (KATL 26L, VirtualPilot: "Passing the runway 08R at D hold line." about a line on the
-    /// loop already flown, while turning to cross 08R). False for a node the route does not pass. Pure
-    /// — <c>RouteStartHoldLineCallTests</c>.
+    /// loop already flown, while turning to cross 08R). False for a node the route does not pass. The
+    /// route between that place and the start of the segment being flown must also be longer than
+    /// <see cref="WAYPOINT_CAPTURE_RADIUS_M"/>, the most the capture can run the index ahead of the
+    /// aircraft: navdata draws fillets as micro-bends a few metres apart, so four segments can be a
+    /// few metres, and a line still ahead would count as passed. Pure — <c>RouteStartHoldLineCallTests</c>.
     /// </summary>
     internal static bool IsPassedOnRoute(IReadOnlyList<TaxiRouteSegment> segments, int currentSegmentIndex, int holdNodeId)
     {
-        int last = segments.Count > 0 && segments[0].FromNode?.NodeId == holdNodeId ? 0 : -1;
+        bool atStart = segments.Count > 0 && segments[0].FromNode?.NodeId == holdNodeId;
+        int last = atStart ? 0 : -1;
         for (int i = 0; i < segments.Count; i++)
-            if (segments[i].ToNode?.NodeId == holdNodeId) last = i;
-        return last >= 0 && last < currentSegmentIndex - ON_ROUTE_TRACKING_SEGMENTS_BACK;
+            if (segments[i].ToNode?.NodeId == holdNodeId) { last = i; atStart = false; }
+        if (last < 0 || last >= currentSegmentIndex - ON_ROUTE_TRACKING_SEGMENTS_BACK) return false;
+        double between = 0;
+        for (int i = atStart ? 0 : last + 1; i < currentSegmentIndex && i < segments.Count; i++)
+            between += segments[i].DistanceMeters;
+        return between > WAYPOINT_CAPTURE_RADIUS_M;
     }
 
     private const double HOLD_LINE_RUNWAY_AHEAD_M = 150.0;

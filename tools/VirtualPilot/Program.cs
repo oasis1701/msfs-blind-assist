@@ -568,23 +568,28 @@ static double TaxiPlanBearingN(TaxiNode a, TaxiNode b) => TaxiPlanBearing(a.Lati
 // <name> being a node's HoldShortName ("runway" when it has none) — every such node within the guard's 40 m (45 m
 // here: the guard measures with its own fast distance), nearest first. Navdata often draws one line as two nodes a
 // few metres apart, so the call is about one of them, not necessarily the nearest. Null for anything else
-// ("Crossing taxiway Y6." names no hold).
+// ("Crossing taxiway Y6." names no hold). Every sentence of the frame's one utterance is tried, so a hold-line
+// call after another "Crossing …" ("Crossing taxiway Y6. Crossing runway 01C at Y5.") is still seen.
 static (List<TaxiNode> nodes, string call, bool crossing)? HoldLineCall(TaxiGraph g, string utterance, double lat, double lon)
 {
-    var m = System.Text.RegularExpressions.Regex.Match(utterance, @"(?:^|\. )(?:(Crossing) (.+?)|Passing the (.+?) hold line)\.(?= |$)");
-    if (!m.Success) return null;
-    bool crossing = m.Groups[1].Success;
-    string name = crossing ? m.Groups[2].Value : m.Groups[3].Value;
-    var nodes = new List<(TaxiNode n, double d)>();
-    foreach (var n in g.Nodes.Values)
+    foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
+                 utterance, @"(?<=^|\. )(?:(Crossing) (.+?)|Passing the (.+?) hold line)\.(?= |$)"))
     {
-        if (n.Type != TaxiNodeType.HoldShort && n.Type != TaxiNodeType.ILSHoldShort) continue;
-        string spoken = string.IsNullOrEmpty(n.HoldShortName) ? "runway" : n.HoldShortName;
-        if (!string.Equals(spoken, name, StringComparison.Ordinal)) continue;
-        double d = TaxiGraph.CalculateDistanceMeters(lat, lon, n.Latitude, n.Longitude);
-        if (d < 45) nodes.Add((n, d));
+        bool crossing = m.Groups[1].Success;
+        string name = crossing ? m.Groups[2].Value : m.Groups[3].Value;
+        var nodes = new List<(TaxiNode n, double d)>();
+        foreach (var n in g.Nodes.Values)
+        {
+            if (n.Type != TaxiNodeType.HoldShort && n.Type != TaxiNodeType.ILSHoldShort) continue;
+            string spoken = string.IsNullOrEmpty(n.HoldShortName) ? "runway" : n.HoldShortName;
+            if (!string.Equals(spoken, name, StringComparison.Ordinal)) continue;
+            double d = TaxiGraph.CalculateDistanceMeters(lat, lon, n.Latitude, n.Longitude);
+            if (d < 45) nodes.Add((n, d));
+        }
+        if (nodes.Count > 0)
+            return (nodes.OrderBy(x => x.d).Select(x => x.n).ToList(), m.Value.TrimStart('.', ' '), crossing);
     }
-    return nodes.Count == 0 ? null : (nodes.OrderBy(x => x.d).Select(x => x.n).ToList(), m.Value.TrimStart('.', ' '), crossing);
+    return null;
 }
 
 void RunTaxis(World w)
